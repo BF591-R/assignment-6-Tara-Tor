@@ -4,6 +4,8 @@
 ## BU BF591
 ## Assignment Week 6
 
+#BiocManager::install("edgeR")
+#BiocManager::install("limma")
 libs <- c("tidyverse", "ggVennDiagram", "BiocManager",
           "DESeq2", "edgeR", "limma")
 # if you don't have a package installed, use BiocManager::install() or 
@@ -33,8 +35,14 @@ for (package in libs) {
 #'
 #' @examples counts_df <- load_n_trim("/path/to/counts/verse_counts.tsv")
 load_n_trim <- function(filename) {
-    return(NULL)
+    counts_df <- read.delim(filename, header = TRUE, row.names = NULL)
+    counts_df <- counts_df[, c("gene", "vP0_1", "vP0_2", "vAd_1", "vAd_2")]
+    rownames(counts_df) <- counts_df$gene
+    counts_df$gene <- NULL
+    return(counts_df)
 }
+
+
 
 #' Perform a DESeq2 analysis of rna seq data
 #'
@@ -57,7 +65,18 @@ load_n_trim <- function(filename) {
 #'
 #' @examples run_deseq(counts_df, coldata, 10, "condition_day4_vs_day7")
 run_deseq <- function(count_dataframe, coldata, count_filter, condition_name) {
-    return(NULL)
+    dds <- DESeq2::DESeqDataSetFromMatrix(
+        countData = count_dataframe,
+        colData   = coldata,
+        design    = ~ condition
+    )
+    # Filter low-count genes
+    dds <- dds[rowSums(DESeq2::counts(dds)) >= count_filter, ]
+    
+    dds <- DESeq2::DESeq(dds)
+    res <- DESeq2::results(dds, name = condition_name)
+    
+    return(as.data.frame(res))
 }
 
 #### edgeR ####
@@ -77,7 +96,13 @@ run_deseq <- function(count_dataframe, coldata, count_filter, condition_name) {
 #'
 #' @examples run_edger(counts_df, group)
 run_edger <- function(count_dataframe, group) {
-    return(NULL)
+    y <- edgeR::DGEList(counts = count_dataframe, group = group)
+    y <- edgeR::calcNormFactors(y)
+    y <- edgeR::estimateDisp(y)
+    
+    res <- edgeR::exactTest(y)
+    
+    return(as.data.frame(res$table))
 }
 
  #### limma ####
@@ -101,7 +126,18 @@ run_edger <- function(count_dataframe, group) {
 #' 
 #' @examples run_limma(counts_df, design, voom=TRUE)
 run_limma <- function(counts_dataframe, design, group) {
-    return(NULL)
+    dge <- edgeR::DGEList(counts = counts_dataframe, group = group)
+    dge <- edgeR::calcNormFactors(dge)
+    
+    design_mat <- as.matrix(design)  # convert to matrix
+    
+    v   <- limma::voom(dge, design_mat)
+    fit <- limma::lmFit(v, design_mat)
+    fit <- limma::eBayes(fit)
+    
+    res <- limma::topTable(fit, coef = "day0vsadult", number = 1000, sort.by = "p")
+    
+    return(as.data.frame(res))
 }
 
 #### ggplot ####
@@ -133,7 +169,15 @@ run_limma <- function(counts_dataframe, design, group) {
 #' 2 deseq   9.97e-261
 #' 3 deseq   1.16e-206
 combine_pval <- function(deseq, edger, limma) {
-    return(NULL)
+    pvals <- data.frame(
+        deseq = deseq$pvalue,
+        edger = edger$PValue,
+        limma = limma$P.Value
+    )
+    
+    gathered <- tidyr::gather(pvals, key = "package", value = "pval")
+    
+    return(gathered)
 }
 
 #' Create three separate facets for each of the diff. exp. pacakges.
@@ -157,7 +201,28 @@ combine_pval <- function(deseq, edger, limma) {
 #' 1  -9.84 2.23e-180 edgeR  
 #' 2   6.18 5.87e-179 edgeR  
 create_facets <- function(deseq, edger, limma) {
-    return(NULL)
+    deseq_df <- data.frame(
+        logFC   = deseq$log2FoldChange,
+        padj    = deseq$padj,
+        package = "DESeq2",
+        row.names = rownames(deseq)
+    )
+    edger_df <- data.frame(
+        logFC   = edger$logFC,
+        padj    = edger$PValue,
+        package = "edgeR",
+        row.names = rownames(edger)
+    )
+    limma_df <- data.frame(
+        logFC   = limma$logFC,
+        padj    = limma$P.Value,
+        package = "limma",
+        row.names = rownames(limma)
+    )
+    
+    volcano <- rbind(deseq_df, edger_df, limma_df)
+    
+    return(tibble::as_tibble(volcano))
 }
 
 #' Create an attractive volcano plot of three diff. exp. packages' data.
@@ -187,6 +252,32 @@ create_facets <- function(deseq, edger, limma) {
 #'
 #' @examples p <- theme_plot(volcano)
 theme_plot <- function(volcano_data) {
-    return(NULL)
+    p <- ggplot2::ggplot(
+            volcano_data,
+            ggplot2::aes(x = logFC, y = -log10(padj), color = padj < 0.05)
+        ) +
+        ggplot2::geom_point(alpha = 0.6, size = 1.2) +
+        ggplot2::facet_wrap(~ package) +
+        ggplot2::scale_color_manual(
+            values = c("TRUE" = "#E63946", "FALSE" = "#A8DADC"),
+            labels = c("TRUE" = "Significant", "FALSE" = "Not significant"),
+            name   = NULL
+        ) +
+        ggplot2::labs(
+            title = "Volcano Plot: DESeq2 vs edgeR vs limma",
+            x     = expression(log[2]~"Fold Change"),
+            y     = expression(-log[10]~"adjusted p-value")
+        ) +
+        ggplot2::theme_minimal(base_size = 13) +
+        ggplot2::theme(
+            plot.title      = ggplot2::element_text(face = "bold", hjust = 0.5),
+            strip.text      = ggplot2::element_text(face = "bold"),
+            legend.position = "bottom",
+            panel.grid.minor = ggplot2::element_blank()
+        )
+    
+    return(p)
 }
+
+
 
