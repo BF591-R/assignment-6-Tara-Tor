@@ -97,7 +97,7 @@ run_edger <- function(count_dataframe, group) {
     y <- edgeR::DGEList(counts = count_dataframe, group = group)
     y <- edgeR::calcNormFactors(y)
     
-    keep <- edgeR::filterByExpr(y)
+    keep <- edgeR::filterByExpr(y, group = group)
     y <- y[keep, , keep.lib.sizes = FALSE]
     
     y <- edgeR::estimateDisp(y)
@@ -128,7 +128,7 @@ run_limma <- function(counts_dataframe, design, group) {
     dge <- edgeR::DGEList(counts = counts_dataframe, group = group)
     dge <- edgeR::calcNormFactors(dge)
     
-    keep <- edgeR::filterByExpr(dge)
+    keep <- edgeR::filterByExpr(dge, group = group)
     dge <- dge[keep, , keep.lib.sizes = FALSE]
     
     design_mat <- as.matrix(design)
