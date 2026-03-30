@@ -96,6 +96,10 @@ run_deseq <- function(count_dataframe, coldata, count_filter, condition_name) {
 run_edger <- function(count_dataframe, group) {
     y <- edgeR::DGEList(counts = count_dataframe, group = group)
     y <- edgeR::calcNormFactors(y)
+    
+    keep <- edgeR::filterByExpr(y)
+    y <- y[keep, , keep.lib.sizes = FALSE]
+    
     y <- edgeR::estimateDisp(y)
     res <- edgeR::exactTest(y)
     return(as.data.frame(res$table))
@@ -124,13 +128,16 @@ run_limma <- function(counts_dataframe, design, group) {
     dge <- edgeR::DGEList(counts = counts_dataframe, group = group)
     dge <- edgeR::calcNormFactors(dge)
     
+    keep <- edgeR::filterByExpr(dge)
+    dge <- dge[keep, , keep.lib.sizes = FALSE]
+    
     design_mat <- as.matrix(design)
     
     v   <- limma::voom(dge, design_mat)
     fit <- limma::lmFit(v, design_mat)
     fit <- limma::eBayes(fit)
     
-    coef_name <- colnames(design_mat)[2]  # dynamically grab second column name
+    coef_name <- colnames(design_mat)[2]
     res <- limma::topTable(fit, coef = coef_name, number = Inf, sort.by = "p")
     
     return(as.data.frame(res))
