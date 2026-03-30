@@ -70,13 +70,11 @@ run_deseq <- function(count_dataframe, coldata, count_filter, condition_name) {
         colData   = coldata,
         design    = ~ condition
     )
-    # Filter low-count genes
     dds <- dds[rowSums(DESeq2::counts(dds)) >= count_filter, ]
-    
     dds <- DESeq2::DESeq(dds)
     res <- DESeq2::results(dds, name = condition_name)
     
-    return(as.data.frame(res))
+    return(res)  # return DESeqResults directly, no as.data.frame()
 }
 
 #### edgeR ####
@@ -98,8 +96,12 @@ run_deseq <- function(count_dataframe, coldata, count_filter, condition_name) {
 run_edger <- function(count_dataframe, group) {
     y <- edgeR::DGEList(counts = count_dataframe, group = group)
     y <- edgeR::calcNormFactors(y)
-    y <- edgeR::estimateDisp(y)
     
+    # Filter to genes with sufficient counts
+    keep <- edgeR::filterByExpr(y)
+    y <- y[keep, , keep.lib.sizes = FALSE]
+    
+    y <- edgeR::estimateDisp(y)
     res <- edgeR::exactTest(y)
     
     return(as.data.frame(res$table))
@@ -129,7 +131,10 @@ run_limma <- function(counts_dataframe, design, group) {
     dge <- edgeR::DGEList(counts = counts_dataframe, group = group)
     dge <- edgeR::calcNormFactors(dge)
     
-    design_mat <- as.matrix(design)  # convert to matrix
+    keep <- edgeR::filterByExpr(dge)
+    dge <- dge[keep, , keep.lib.sizes = FALSE]
+    
+    design_mat <- as.matrix(design)
     
     v   <- limma::voom(dge, design_mat)
     fit <- limma::lmFit(v, design_mat)
@@ -278,6 +283,7 @@ theme_plot <- function(volcano_data) {
     
     return(p)
 }
+
 
 
 
